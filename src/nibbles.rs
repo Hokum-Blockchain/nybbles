@@ -1,4 +1,9 @@
-use core::{borrow::Borrow, fmt, mem::MaybeUninit, ops::Index};
+use core::{
+    borrow::Borrow,
+    fmt,
+    mem::MaybeUninit,
+    ops::{Index, Range},
+};
 use smallvec::SmallVec;
 
 #[cfg(not(feature = "std"))]
@@ -223,12 +228,12 @@ impl Nibbles {
     /// ```
     #[inline]
     #[track_caller]
-    pub fn from_nibbles<T: AsRef<[u8]>>(bytes: T, nibbles: u8) -> Self {
+    pub fn from_nibbles<T: AsRef<[u8]>>(bytes: T) -> Self {
         let bytes = bytes.as_ref();
         if !bytes.iter().all(|&x| x <= 0x0F) {
             panic_invalid_nibbles();
         }
-        Self::from_nibbles_unchecked(bytes, nibbles)
+        Self::from_nibbles_unchecked(bytes)
     }
 
     /// Creates a new [`Nibbles`] instance by copying the given bytes, without checking their
@@ -251,16 +256,11 @@ impl Nibbles {
     /// assert_eq!(nibbles[..], [0xFF]);
     /// ```
     #[inline]
-    pub fn from_nibbles_unchecked<T: AsRef<[u8]>>(nibbles: T, total: u8) -> Self {
+    pub fn from_nibbles_unchecked<T: AsRef<[u8]>>(nibbles: T) -> Self {
         let mut res = Self(SmallVec::<[u64; 4]>::new(), 0);
-        let mut cnt = 0;
 
         for &byte in nibbles.as_ref().iter() {
-            if cnt == total {
-                break;
-            }
             res.push_unchecked(byte);
-            cnt += 1;
         }
 
         res
@@ -692,20 +692,11 @@ impl Nibbles {
     /// Panics if the range is out of bounds.
     #[inline]
     #[track_caller]
-    pub fn slice<I>(&self, range: I) -> Self
+    pub fn slice<I>(&self, range: I) -> &[u64]
     where
         Self: Index<I, Output = [u64]>,
     {
-        let rg = &self[range];
-
-        let mut nibbles = vec![];
-        for nibble in rg.iter() {
-            for i in (0..=60).rev().step_by(4) {
-                nibbles.push(((*nibble >> i) & 0xf) as u8);
-            }
-        }
-
-        Self::from_nibbles(nibbles, self.1)
+        &self[range]
     }
 
     /// Join two nibbles together.
@@ -803,7 +794,7 @@ mod tests {
 
     #[test]
     fn hashed_regression() {
-        let nibbles = Nibbles::from_nibbles(hex!("05010406040a040203030f010805020b050c04070003070e0909070f010b0a0805020301070c0a0902040b0f000f0006040a04050f020b090701000a0a040b"), 64);
+        let nibbles = Nibbles::from_nibbles(hex!("05010406040a040203030f010805020b050c04070003070e0909070f010b0a0805020301070c0a0902040b0f000f0006040a04050f020b090701000a0a040b"));
         let path = nibbles.encode_path_leaf(true);
         let expected = hex!("351464a4233f1852b5c47037e997f1ba852317ca924bf0f064a45f2b9710aa4b");
         assert_eq!(path[..], expected);
@@ -822,7 +813,7 @@ mod tests {
         ];
         for (input, expected) in tests {
             assert!(input.iter().all(|&x| x <= 0xf));
-            let nibbles = Nibbles::from_nibbles(input, (input.len() * 16) as u8);
+            let nibbles = Nibbles::from_nibbles(input);
             let encoded = nibbles.pack();
             assert_eq!(&encoded[..], expected);
         }
@@ -837,10 +828,9 @@ mod tests {
         where
             Nibbles: Index<I, Output = [u64]>,
         {
-            let nibbles = Nibbles::from_nibbles_unchecked(RAW, RAW.len() as u8);
+            let nibbles = Nibbles::from_nibbles_unchecked(RAW);
             let sliced = nibbles.slice(range);
-            assert_eq!(sliced, Nibbles::from_nibbles(expected, expected.len() as u8));
-            assert_eq!(sliced.pack(), Nibbles::from_nibbles(expected, expected.len() as u8).pack());
+            assert_eq!(sliced, Nibbles::from_nibbles(expected).pack().as_slice());
         }
 
         test_slice(0..0, &[]);
@@ -864,7 +854,7 @@ mod tests {
 
     #[test]
     fn indexing() {
-        let mut nibbles = Nibbles::from_nibbles([0x0A], 1);
+        let mut nibbles = Nibbles::from_nibbles([0x0A]);
         assert_eq!(nibbles.at(0), 0xA << 60);
         nibbles.set_at(0, 0xB << 60);
         assert_eq!(nibbles.at(0), 0xB << 60);
@@ -883,7 +873,7 @@ mod tests {
 
     #[test]
     fn get_byte_max() {
-        let nibbles = Nibbles::from_nibbles([0x0A, 0x0B, 0x0C, 0x0D], 4);
+        let nibbles = Nibbles::from_nibbles([0x0A, 0x0B, 0x0C, 0x0D]);
         assert_eq!(nibbles.get_byte(usize::MAX), None);
     }
 
