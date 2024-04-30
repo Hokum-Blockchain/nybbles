@@ -206,6 +206,19 @@ impl Nibbles {
         Self(SmallVec::with_capacity(capacity), 0)
     }
 
+    /// Returns the total number of nibbles.
+    ///
+    /// # Examples
+    /// ```
+    /// # use nybbles::Nibbles;
+    /// let nibbles = Nibbles::from_nibbles(&[0x0A, 0x0B, 0x0C, 0x0D]);
+    /// assert_eq!(nibbles.total_nibbles(), 4);
+    /// ```
+    #[inline]
+    pub fn total_nibbles(&self) -> usize {
+        self.1 as usize
+    }
+
     /// Creates a new [`Nibbles`] instance by copying the given bytes.
     ///
     /// # Panics
