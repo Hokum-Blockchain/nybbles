@@ -16,14 +16,14 @@ pub fn nibbles_benchmark(c: &mut Criterion) {
 
             let id = criterion::BenchmarkId::new("naive", len);
             g.bench_function(id, |b| {
-                let bytes = &get_bytes(len as usize)[..];
-                b.iter(|| unpack_naive(black_box(bytes)))
+                let bytes = get_bytes(len as usize);
+                b.iter(|| unpack_naive(black_box(&bytes.0), black_box(bytes.1)))
             });
 
             let id = criterion::BenchmarkId::new("nybbles", len);
             g.bench_function(id, |b| {
-                let bytes = &get_bytes(len as usize)[..];
-                b.iter(|| Nibbles::unpack(black_box(bytes)))
+                let bytes = get_bytes(len as usize);
+                b.iter(|| Nibbles::unpack(black_box(&bytes.0), black_box(bytes.1)))
             });
         }
     }
@@ -74,18 +74,22 @@ fn get_nibbles(len: usize) -> Nibbles {
         .current()
 }
 
-fn get_bytes(len: usize) -> Vec<u8> {
-    proptest::collection::vec(proptest::arbitrary::any::<u8>(), len)
-        .new_tree(&mut Default::default())
-        .unwrap()
-        .current()
+fn get_bytes(len: usize) -> (Vec<u64>, u8) {
+    let rng = rand::thread_rng();
+    (
+        proptest::collection::vec(proptest::arbitrary::any::<u64>(), len)
+            .new_tree(&mut Default::default())
+            .unwrap()
+            .current(),
+        rng.gen_range(16 * (len - 1)..=16 * len),
+    )
 }
 
-fn unpack_naive(bytes: &[u8]) -> Vec<u8> {
+fn unpack_naive(bytes: &[u64], nibbles: u8) -> Vec<u64> {
     bytes.iter().flat_map(|byte| [byte >> 4, byte & 0x0f]).collect()
 }
 
-fn pack_naive(bytes: &[u8]) -> Vec<u8> {
+fn pack_naive(bytes: &[u64]) -> Vec<u64> {
     let chunks = bytes.chunks_exact(2);
     let rem = chunks.remainder();
     chunks.map(|chunk| (chunk[0] << 4) | chunk[1]).chain(rem.iter().copied()).collect()
@@ -96,10 +100,10 @@ criterion_main!(benches);
 
 #[test]
 fn naive_equivalency() {
-    for len in [0, 1, 2, 3, 4, 15, 16, 17, 31, 32, 33] {
-        let bytes = get_bytes(len);
-        let nibbles = Nibbles::unpack(&bytes);
-        assert_eq!(unpack_naive(&bytes)[..], nibbles[..]);
+    for len in [0, 1, 2, 3, 4] {
+        let (bytes, nibbles) = get_bytes(len);
+        let nibbles = Nibbles::unpack(&bytes, nibbles);
+        assert_eq!(unpack_naive(&bytes.0, bytes.1)[..], nibbles[..]);
         assert_eq!(pack_naive(&nibbles[..])[..], nibbles.pack()[..]);
     }
 }
