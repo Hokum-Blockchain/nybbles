@@ -62,13 +62,12 @@ fn get_nibbles(len: usize) -> Nibbles {
 }
 
 fn get_bytes(len: u8) -> (Vec<u64>, u8) {
-    let mut rng = rand::thread_rng();
     (
         proptest::collection::vec(proptest::arbitrary::any::<u64>(), len as usize)
             .new_tree(&mut Default::default())
             .unwrap()
             .current(),
-        rng.gen_range(16 * (len - 1)..=16 * len),
+        16 * len,
     )
 }
 

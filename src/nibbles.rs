@@ -346,9 +346,22 @@ impl Nibbles {
     /// ```
     #[inline]
     pub fn unpack<T: AsRef<[u64]>>(data: T, nibbles: u8) -> Vec<u8> {
-        (0..nibbles as usize)
-            .map(|l| ((data.as_ref()[l / 16] >> (60 - 4 * (l % 16))) & 0xf) as u8)
-            .collect()
+        // (0..nibbles as usize)
+        //     .map(|l| ((data.as_ref()[l / 16] >> (60 - 4 * (l % 16))) & 0xf) as u8)
+        //     .collect();
+
+        let mut result = vec![0u8; nibbles as usize];
+        let data_ref = data.as_ref();
+        let mut ptr = result.as_mut_ptr();
+
+        unsafe {
+            for l in 0..nibbles as usize {
+                ptr.write((data_ref[l / 16] >> (60 - 4 * (l % 16)) & 0xf) as u8);
+                ptr = ptr.offset(1);
+            }
+        }
+
+        result
     }
 
     /// Packs the nibbles into the given slice.
@@ -483,7 +496,6 @@ impl Nibbles {
     /// `ptr` must be valid for at least `self.len() / 2 + 1` bytes.
     #[inline]
     unsafe fn encode_path_leaf_to(&self, is_leaf: bool, ptr: *mut u8) {
-        // needs further testings
         let sz = self.1 as usize;
         let odd_nibbles = sz % 2 != 0;
         *ptr = self.encode_path_leaf_first_byte(is_leaf, odd_nibbles);
@@ -600,7 +612,7 @@ impl Nibbles {
         }
 
         let last_idx = (self.1 / 16) as usize;
-        let pos = 60 - (self.1 % 16) * 4;
+        let pos = 64 - (self.1 % 16) * 4;
 
         Some((self.0[last_idx] >> pos) & 0xf)
     }
@@ -705,8 +717,20 @@ impl Nibbles {
 
     /// Pops a nibble from the end of the current nibbles.
     #[inline]
-    pub fn pop(&mut self) -> Option<u64> {
-        self.0.pop()
+    pub fn pop(&mut self) -> Option<u8> {
+        if self.0.len() == 0 {
+            return None;
+        }
+
+        let last_idx = (self.1 / 16) as usize;
+        let pos = 64 - (self.1 % 16) * 4;
+
+        let nibble = ((self.0[last_idx] >> pos) & 0xf) as u8;
+
+        self.0[last_idx] &= !(0xf << pos);
+        self.1 -= 1;
+
+        Some(nibble)
     }
 
     /// Extend the current nibbles with another nibbles.
@@ -754,6 +778,26 @@ mod tests {
         let path = nibbles.encode_path_leaf(true);
         let expected = hex!("351464a4233f1852b5c47037e997f1ba852317ca924bf0f064a45f2b9710aa4b");
         assert_eq!(path[..], expected);
+    }
+
+    #[test]
+    fn unpack_nibbles() {
+        let tests: [(&[u64], usize, &[u8]); 2] = [
+            (&[0xaaaaaaaaaaaaaaaa], 16, &[0xa; 16]),
+            (
+                &[0xbaaaaaaaaaaaaaaa, 0x0],
+                17,
+                &[
+                    0xb, 0xa, 0xa, 0xa, 0xa, 0xa, 0xa, 0xa, 0xa, 0xa, 0xa, 0xa, 0xa, 0xa, 0xa, 0xa,
+                    0x0,
+                ],
+            ),
+        ];
+
+        for (input, size, expected) in tests {
+            let nibbles = Nibbles::unpack(input, size as u8);
+            assert_eq!(nibbles, expected);
+        }
     }
 
     #[test]
@@ -819,12 +863,19 @@ mod tests {
     #[test]
     fn push_pop() {
         let mut nibbles = Nibbles::new();
-        nibbles.push(0x0A);
-        assert_eq!(nibbles[0], 0x0A << 60);
+        nibbles.push(0xA);
+        assert_eq!(nibbles[0], 0xA << 60);
         assert_eq!(nibbles.len(), 1);
 
-        assert_eq!(nibbles.pop(), Some(0x0A << 60));
-        assert_eq!(nibbles.len(), 0);
+        assert_eq!(nibbles.pop(), Some(0xA));
+        assert_eq!(nibbles.total_nibbles(), 0);
+
+        nibbles.push(0xB);
+        assert_eq!(nibbles[0], 0xB << 60);
+        assert_eq!(nibbles.len(), 1);
+
+        assert_eq!(nibbles.pop(), Some(0xB));
+        assert_eq!(nibbles.total_nibbles(), 0);
     }
 
     #[test]
