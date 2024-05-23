@@ -355,8 +355,34 @@ impl Nibbles {
         let ptr = result.as_mut_ptr();
 
         unsafe {
-            for l in 0..nibbles {
-                ptr.add(l).write((data_ref[l >> 4] >> (60 - 4 * (l % 16)) & 0xf) as u8);
+            let ln = data_ref.len() - 1;
+
+            for i in 0..ln {
+                // hardcoded inlining
+                let pptr = ptr.add(16 * i);
+                pptr.write(((data_ref[i] >> 60) & 0xf) as u8);
+                pptr.add(1).write(((data_ref[i] >> 56) & 0xf) as u8);
+                pptr.add(2).write(((data_ref[i] >> 52) & 0xf) as u8);
+                pptr.add(3).write(((data_ref[i] >> 48) & 0xf) as u8);
+                pptr.add(4).write(((data_ref[i] >> 44) & 0xf) as u8);
+                pptr.add(5).write(((data_ref[i] >> 40) & 0xf) as u8);
+                pptr.add(6).write(((data_ref[i] >> 36) & 0xf) as u8);
+                pptr.add(7).write(((data_ref[i] >> 32) & 0xf) as u8);
+                pptr.add(8).write(((data_ref[i] >> 28) & 0xf) as u8);
+                pptr.add(9).write(((data_ref[i] >> 24) & 0xf) as u8);
+                pptr.add(10).write(((data_ref[i] >> 20) & 0xf) as u8);
+                pptr.add(11).write(((data_ref[i] >> 16) & 0xf) as u8);
+                pptr.add(12).write(((data_ref[i] >> 12) & 0xf) as u8);
+                pptr.add(13).write(((data_ref[i] >> 8) & 0xf) as u8);
+                pptr.add(14).write(((data_ref[i] >> 4) & 0xf) as u8);
+                pptr.add(15).write((data_ref[i] & 0xf) as u8);
+            }
+
+            let end = if nibbles % 16 == 0 { 16 } else { nibbles % 16 };
+            let pptr = ptr.add(16 * ln);
+
+            for i in 0..end {
+                pptr.add(i).write(((data_ref[ln] >> (60 - 4 * i)) & 0xf) as u8);
             }
         }
 
@@ -942,8 +968,6 @@ mod tests {
             for len in [1usize, 2, 4, 32, 128] {
                 let bytes = get_bytes(len);
                 let nibbles = Nibbles::unpack(&bytes, 16 * (len as usize));
-                // our unpack is basically equivalent to the naive. i don't see any optimizations
-                // here.
                 assert_eq!(unpack_naive(&bytes, 16 * len)[..], nibbles[..]);
                 // assert_eq!(
                 //     pack_naive(&nibbles[..])[..],

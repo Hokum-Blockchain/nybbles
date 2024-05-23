@@ -7,16 +7,16 @@ use std::{hint::black_box, time::Duration};
 
 /// Benchmarks the nibble unpacking.
 pub fn nibbles_benchmark(c: &mut Criterion) {
-    let lengths = [1u8, 2u8, 4u8, 32u8, 128u8];
+    let lengths = [1usize, 2, 4];
 
     {
         let mut g = group(c, "unpack");
         for len in lengths {
-            g.throughput(criterion::Throughput::Bytes(len.into()));
+            g.throughput(criterion::Throughput::Bytes(len as u64));
             let id = criterion::BenchmarkId::new("nybbles", len);
             g.bench_function(id, |b| {
-                let bytes = &get_bytes(len.into())[..];
-                b.iter(|| Nibbles::unpack(black_box(bytes), black_box((len as usize) << 4)))
+                let bytes = &get_bytes(len)[..];
+                b.iter(|| Nibbles::unpack(black_box(bytes), black_box(len << 4)))
             });
         }
     }
@@ -24,11 +24,11 @@ pub fn nibbles_benchmark(c: &mut Criterion) {
     {
         let mut g = group(c, "pack");
         for len in lengths {
-            g.throughput(criterion::Throughput::Bytes(len.into()));
+            g.throughput(criterion::Throughput::Bytes(len as u64));
 
             let id = criterion::BenchmarkId::new("nybbles", len);
             g.bench_function(id, |b| {
-                let bytes = &get_nibbles(len as usize);
+                let bytes = &get_nibbles(len);
                 b.iter(|| black_box(&bytes).pack())
             });
         }
@@ -37,10 +37,10 @@ pub fn nibbles_benchmark(c: &mut Criterion) {
     {
         let mut g = group(c, "encode_path_leaf");
         for len in lengths {
-            g.throughput(criterion::Throughput::Bytes(len.into()));
+            g.throughput(criterion::Throughput::Bytes(len as u64));
             let id = criterion::BenchmarkId::new("nybbles", len);
             g.bench_function(id, |b| {
-                let nibbles = get_nibbles(len as usize);
+                let nibbles = get_nibbles(len);
                 b.iter(|| black_box(&nibbles).encode_path_leaf(false))
             });
         }
@@ -61,8 +61,8 @@ fn get_nibbles(len: usize) -> Nibbles {
         .current()
 }
 
-fn get_bytes(len: u8) -> Vec<u64> {
-    proptest::collection::vec(proptest::arbitrary::any::<u64>(), len as usize)
+fn get_bytes(len: usize) -> Vec<u64> {
+    proptest::collection::vec(proptest::arbitrary::any::<u64>(), len)
         .new_tree(&mut Default::default())
         .unwrap()
         .current()
