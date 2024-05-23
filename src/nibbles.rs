@@ -345,19 +345,18 @@ impl Nibbles {
     /// assert_eq!(nibbles[..], [0x0A, 0x0B, 0x0C, 0x0D]);
     /// ```
     #[inline]
-    pub fn unpack<T: AsRef<[u64]>>(data: T, nibbles: u8) -> Vec<u8> {
+    pub fn unpack<T: AsRef<[u64]>>(data: T, nibbles: usize) -> Vec<u8> {
         // (0..nibbles as usize)
         //     .map(|l| ((data.as_ref()[l / 16] >> (60 - 4 * (l % 16))) & 0xf) as u8)
         //     .collect();
 
-        let mut result = vec![0u8; nibbles as usize];
+        let mut result = vec![0u8; nibbles];
         let data_ref = data.as_ref();
-        let mut ptr = result.as_mut_ptr();
+        let ptr = result.as_mut_ptr();
 
         unsafe {
-            for l in 0..nibbles as usize {
-                ptr.write((data_ref[l / 16] >> (60 - 4 * (l % 16)) & 0xf) as u8);
-                ptr = ptr.offset(1);
+            for l in 0..nibbles {
+                ptr.add(l).write((data_ref[l >> 4] >> (60 - 4 * (l % 16)) & 0xf) as u8);
             }
         }
 
@@ -795,7 +794,7 @@ mod tests {
         ];
 
         for (input, size, expected) in tests {
-            let nibbles = Nibbles::unpack(input, size as u8);
+            let nibbles = Nibbles::unpack(input, size);
             assert_eq!(nibbles, expected);
         }
     }
@@ -887,7 +886,7 @@ mod tests {
     #[cfg(feature = "arbitrary")]
     mod arbitrary {
         use super::*;
-        use proptest::{collection::vec, prelude::*};
+        use proptest::{collection::vec, prelude::*, strategy::ValueTree};
 
         proptest::proptest! {
             #[test]
@@ -922,6 +921,35 @@ mod tests {
                 if input_is_odd {
                     assert_eq!((extension_flag & 0x0f) as u8, (input.first().unwrap() >> 60 & 0xf) as u8);
                 }
+            }
+        }
+
+        fn get_bytes(len: usize) -> Vec<u64> {
+            proptest::collection::vec(proptest::arbitrary::any::<u64>(), len as usize)
+                .new_tree(&mut Default::default())
+                .unwrap()
+                .current()
+        }
+
+        fn unpack_naive(bytes: &[u64], len: usize) -> Vec<u8> {
+            (0..len)
+                .map(|l| ((bytes.as_ref()[l / 16] >> (60 - 4 * (l % 16))) & 0xf) as u8)
+                .collect()
+        }
+
+        #[test]
+        fn naive_equivalency() {
+            for len in [1usize, 2, 4, 32, 128] {
+                let bytes = get_bytes(len);
+                let nibbles = Nibbles::unpack(&bytes, 16 * (len as usize));
+                // our unpack is basically equivalent to the naive. i don't see any optimizations
+                // here.
+                assert_eq!(unpack_naive(&bytes, 16 * len)[..], nibbles[..]);
+                // assert_eq!(
+                //     pack_naive(&nibbles[..])[..],
+                //     Nibbles::pack(&Nibbles::from_nibbles(&nibbles))[..]
+                // );
+                println!("OK");
             }
         }
     }

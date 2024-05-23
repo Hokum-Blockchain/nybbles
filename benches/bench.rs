@@ -7,7 +7,7 @@ use std::{hint::black_box, time::Duration};
 
 /// Benchmarks the nibble unpacking.
 pub fn nibbles_benchmark(c: &mut Criterion) {
-    let lengths = [1u8, 2u8, 16u8, 128u8];
+    let lengths = [1u8, 2u8, 4u8, 32u8, 128u8];
 
     {
         let mut g = group(c, "unpack");
@@ -15,8 +15,8 @@ pub fn nibbles_benchmark(c: &mut Criterion) {
             g.throughput(criterion::Throughput::Bytes(len.into()));
             let id = criterion::BenchmarkId::new("nybbles", len);
             g.bench_function(id, |b| {
-                let bytes = get_bytes(len.into());
-                b.iter(|| Nibbles::unpack(black_box(&bytes.0), black_box(bytes.1)))
+                let bytes = &get_bytes(len.into())[..];
+                b.iter(|| Nibbles::unpack(black_box(bytes), black_box((len as usize) << 4)))
             });
         }
     }
@@ -61,14 +61,15 @@ fn get_nibbles(len: usize) -> Nibbles {
         .current()
 }
 
-fn get_bytes(len: u8) -> (Vec<u64>, u8) {
-    (
-        proptest::collection::vec(proptest::arbitrary::any::<u64>(), len as usize)
-            .new_tree(&mut Default::default())
-            .unwrap()
-            .current(),
-        16 * len,
-    )
+fn get_bytes(len: u8) -> Vec<u64> {
+    proptest::collection::vec(proptest::arbitrary::any::<u64>(), len as usize)
+        .new_tree(&mut Default::default())
+        .unwrap()
+        .current()
+}
+
+fn unpack_naive(bytes: &[u64], len: usize) -> Vec<u8> {
+    (0..len).map(|l| ((bytes.as_ref()[l / 16] >> (60 - 4 * (l % 16))) & 0xf) as u8).collect()
 }
 
 criterion_group!(benches, nibbles_benchmark);
@@ -76,14 +77,15 @@ criterion_main!(benches);
 
 #[test]
 fn naive_equivalency() {
-    for len in [0, 1, 2, 3, 4] {
-        let (bytes, nibbles) = get_bytes(len);
-        let nibbles = Nibbles::unpack(&bytes, nibbles);
+    for len in [1usize, 2, 4, 32, 128] {
+        let bytes = get_bytes(len);
+        let nibbles = Nibbles::unpack(&bytes, 16 * len);
         // our unpack is basically equivalent to the naive. i don't see any optimizations here.
-        // assert_eq!(unpack_naive(&bytes.0, bytes.1)[..], nibbles[..]);
+        assert_eq!(unpack_naive(&bytes.0, bytes.1)[..], nibbles[..]);
         assert_eq!(
             pack_naive(&nibbles[..])[..],
             Nibbles::pack(&Nibbles::from_nibbles(&nibbles))[..]
         );
+        println!("OK");
     }
 }
