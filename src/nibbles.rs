@@ -346,43 +346,25 @@ impl Nibbles {
     /// ```
     #[inline]
     pub fn unpack<T: AsRef<[u64]>>(data: T, nibbles: usize) -> Vec<u8> {
-        // (0..nibbles as usize)
-        //     .map(|l| ((data.as_ref()[l / 16] >> (60 - 4 * (l % 16))) & 0xf) as u8)
-        //     .collect();
-
         let mut result = vec![0u8; nibbles];
-        let data_ref = data.as_ref();
+        let data_ref = data.as_ref().as_ptr() as *const u8;
         let ptr = result.as_mut_ptr();
 
         unsafe {
-            let ln = data_ref.len() - 1;
+            let ln = data.as_ref().len() - 1;
 
             for i in 0..ln {
-                // hardcoded inlining
-                let pptr = ptr.add(16 * i);
-                pptr.write(((data_ref[i] >> 60) & 0xf) as u8);
-                pptr.add(1).write(((data_ref[i] >> 56) & 0xf) as u8);
-                pptr.add(2).write(((data_ref[i] >> 52) & 0xf) as u8);
-                pptr.add(3).write(((data_ref[i] >> 48) & 0xf) as u8);
-                pptr.add(4).write(((data_ref[i] >> 44) & 0xf) as u8);
-                pptr.add(5).write(((data_ref[i] >> 40) & 0xf) as u8);
-                pptr.add(6).write(((data_ref[i] >> 36) & 0xf) as u8);
-                pptr.add(7).write(((data_ref[i] >> 32) & 0xf) as u8);
-                pptr.add(8).write(((data_ref[i] >> 28) & 0xf) as u8);
-                pptr.add(9).write(((data_ref[i] >> 24) & 0xf) as u8);
-                pptr.add(10).write(((data_ref[i] >> 20) & 0xf) as u8);
-                pptr.add(11).write(((data_ref[i] >> 16) & 0xf) as u8);
-                pptr.add(12).write(((data_ref[i] >> 12) & 0xf) as u8);
-                pptr.add(13).write(((data_ref[i] >> 8) & 0xf) as u8);
-                pptr.add(14).write(((data_ref[i] >> 4) & 0xf) as u8);
-                pptr.add(15).write((data_ref[i] & 0xf) as u8);
+                for j in 0..8 {
+                    ptr.add(16 * i + 2 * j).write(*data_ref.add(16 * i + 7 - j) >> 4);
+                    ptr.add(16 * i + 2 * j + 1).write(*data_ref.add(16 * i + 7 - j) & 0xf);
+                }
             }
 
             let end = if nibbles % 16 == 0 { 16 } else { nibbles % 16 };
             let pptr = ptr.add(16 * ln);
 
             for i in 0..end {
-                pptr.add(i).write(((data_ref[ln] >> (60 - 4 * i)) & 0xf) as u8);
+                pptr.add(i).write(((data.as_ref()[ln] >> (60 - 4 * i)) & 0xf) as u8);
             }
         }
 
